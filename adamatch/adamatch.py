@@ -27,7 +27,7 @@ class Adamatch():
             Neural network that receives an array of size X and classifies it into N classes.
         """
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
         self.encoder = encoder.to(self.device)
         self.classifier = classifier.to(self.device)
 
@@ -100,7 +100,9 @@ class Adamatch():
 
         self.history = {'epoch_loss': [], 'accuracy_source': [], 'accuracy_target': []}
 
-        # training loop
+        #* training loop
+        print("Training started")
+
         for epoch in range(start_epoch, epochs):
             running_loss = 0.0
 
@@ -316,7 +318,7 @@ class Adamatch():
             
         plt.show()
 
-    def plot_cm_roc(self, dataloader, n_classes=10):
+    def plot_cm_roc(self, dataloader, n_classes=2):
         """
         Plots the confusion matrix and ROC curves of the model on `dataloader`.
 

@@ -1,113 +1,96 @@
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-# from sklearn.model_selection import train_test_split
-import torch
-
-import sys
-sys.path.append("./")
-from utils import load_data
+from torch.utils.data import Dataset
+import numpy as np
+import os
+import warnings
+from utils import load_data, _permute
 
 
 
-
-class _MinMaxNormalizeImage:
-    def __call__(self, img: torch.Tensor):
-        min_val = img.min()
-        max_val = img.max()
-        normalized_tensor = (img - min_val) / (max_val - min_val)
-        return normalized_tensor
-        
-
+def array_split(arr: np.array, train_size: float = 0.8):
+    split_index = int(len(arr) * train_size)
+    arr1, arr2 = np.array_split(arr, [split_index])
+    
+    return arr1, arr2
 
 
 class _LensData(Dataset):
-    def __init__(self, transform, *args, **kwargs) -> None:
-        ROOT = "./data"
-        self.X, self.y = load_data(root=ROOT, *args, **kwargs)
-
+    def __init__(self, transform, root="./data", datatype="easy", isLabeled=True, isTest=False, use_cached=True, permute=False) -> None:
         self.transform = transform
+
+        if datatype == "easy":
+            isLabeled = True
+
+        if use_cached:
+            try:
+                if isLabeled:
+                    self.X = np.load(os.path.join(root, f'X_{datatype}.npy'))
+                    self.y = np.load(os.path.join(root, f'Y_{datatype}.npy'))
+                else:
+                    self.X = np.load(os.path.join(root, f'X_unlabeled.npy'))
+                    self.y = np.zeros((self.X.shape[0]), dtype=np.int64)
+
+                    if not isTest:
+                        self.X, _ = array_split(self.X)
+                    else:
+                        _, self.X = array_split(self.X)
+
+
+                if permute:
+                    self.X, self.y = _permute(self.X, self.y)
+
+                #! FOR TESTING ONLY
+                self.X, self.y = self.X[:100], self.y[:100]
+
+                self.X = self.X.transpose((0,2,3,1))
+                print('Cached data found!')
+                # print("X shape cached: ", self.X.shape)
+                print("y type cached: ", self.y.dtype)
+
+                return
+                
+
+            except FileNotFoundError as _:
+                warnings.warn('Cached data does not exist! Loading from raw data.')
+
+
+        if isLabeled:
+            self.X, self.y, _ = load_data(root, datatype)
+
+        else:
+            _, _, self.X = load_data(root, datatype)
+            self.y = np.zeros((self.X.shape[0]), dtype=np.int64)
+            
+            #* train/test split
+            if not isTest:
+                self.X, _ = array_split(self.X)
+            else:
+                _, self.X = array_split(self.X)
+
+
+        if permute:
+            self.X, self.y = _permute(self.X, self.y)
+
+        #! FOR TESTING ONLY
+        self.X, self.y = self.X[:100], self.y[:100]
+
+
+        self.X = self.X.transpose((0,2,3,1))
+        # print("X shape uncached: ", self.X.shape)
+
 
 
     def __len__(self):
-        return len(self.y)
+        return len(self.X)
 
 
     def __getitem__(self, i):
         img = self.X[i]
+        labels = None
 
-        labels = self.y[i]
+        if hasattr(self, 'y'):
+            labels = self.y[i]
 
         if self.transform is not None:
             img = self.transform(img)
 
         return img, labels
-
-
-
-class Lens:
-
-    def __init__(self, batch_size=1, num_workers=1, crop_size=101, img_size=101, rotation_degrees=0, translate=(0.0, 0.0), scale=(1.0, 1.0), *, class_samples):
-
-        self.batch_size = batch_size
-
-        self.num_workers = num_workers
-
-        self.crop_size = crop_size
-        self.img_size = img_size
-        self.rotation = rotation_degrees
-        self.translate = translate
-        self.scale = scale
-
-        self.class_samples = class_samples
-
-
-    def __call__(self):
-        # possible batch sizes: 5, 10, 13, 20, 26, 41, 52, 65, 82, 130, 164
-        train_loader = DataLoader(
-            _LensData(
-                transform=transforms.Compose([
-                    transforms.ToPILImage(),
-                    transforms.CenterCrop(self.crop_size),
-                    transforms.Resize(self.img_size),
-                    transforms.RandomAffine(
-                        degrees=self.rotation, 
-                        translate=self.translate,
-                        scale=self.scale
-                    ),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    _MinMaxNormalizeImage(),
-                    transforms.Normalize(mean=(0.5,), std=(0.5,)),
-                ]),
-                datatype="easy",
-                use_cached = True,
-                permute = False
-            ),
-            
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers
-        )
-
-
-        test_loader = DataLoader(
-            _LensData(
-                transform=transforms.Compose([
-                    transforms.ToPILImage(),
-                    transforms.CenterCrop(self.crop_size),
-                    transforms.Resize(self.img_size),
-                    transforms.ToTensor(),
-                    _MinMaxNormalizeImage(),
-                    transforms.Normalize(mean=(0.5,), std=(0.5,)),
-                ]),
-                datatype="hard",
-                use_cached = True,
-                permute = False
-            ),
-            
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers
-        )
-        
-        return train_loader, test_loader, self.img_size

@@ -151,9 +151,6 @@ if __name__ == '__main__':
 
     filtered = np.array(filtered)
 
-    print(to_filter.shape)
-    print(filtered.shape)
-
     to_plot = torch.concat((to_filter.squeeze(1), torch.from_numpy(filtered)))
 
     fig, axes = plt.subplots(2, num_imgs, sharex='all', sharey='all', figsize=(12, 9))

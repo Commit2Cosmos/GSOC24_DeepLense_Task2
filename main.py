@@ -1,11 +1,8 @@
-from utils import load_data, apply_to_channels
+# from utils import load_data, apply_to_channels
 from loaders.load_data_lens import _LensData
 
 import numpy as np
 import matplotlib.pyplot as plt
-
-from scipy.signal import wiener
-
 
 
 # ROOT = './data'
@@ -36,34 +33,23 @@ from scipy.signal import wiener
 # print(X.shape)
 
 
-
-#! TESTING DATALOADER
-
+from adamatch.data import Wiener, MinMaxNormalizeImage
 from torchvision import transforms
 
-
-rotation = 0
-translate = (0.0, 0.0)
-scale = (1.0, 1.0)
-
-
-dataset = _LensData(transform=transforms.Compose([
-                wiener,
-                transforms.ToTensor(),
-                transforms.RandomAffine(
-                    degrees=rotation, 
-                    translate=translate,
-                    scale=scale
-                ),
-                transforms.RandomHorizontalFlip(),
-            ]),
-            datatype="easy",
-            use_cached = True,
-            permute = True)
+test_transform = transforms.Compose([transforms.ToTensor(),
+                                         transforms.Resize(101),
+                                         MinMaxNormalizeImage(),
+                                         ])
 
 
-print(len(dataset))
-
+source_dataset_train_weak = _LensData( 
+                                transform=test_transform,
+                                root="./data",
+                                datatype="easy",
+                                isLabeled=True,
+                                use_cached = True,
+                                permute = False
+                                )
 
 
 
@@ -73,12 +59,13 @@ plt.axis('off')
 
 axes = axes.flatten()
 
-for i, ax in enumerate(axes):
-    # d = apply_to_channels(pr[i]).transpose((1,2,0))
-    # d = dataset[i]
+for i in range(0, int(len(axes)/2), 1):
+    axes[i].set_title(source_dataset_train_weak[i][1])
+    axes[i].imshow(source_dataset_train_weak[i][0].transpose(0, 2))
+    im2 = Wiener()(source_dataset_train_weak[i][0]).transpose(0, 2)
+    axes[i+4].set_title(source_dataset_train_weak[i][1])
+    axes[i+4].imshow(im2)
 
-    ax.set_title(dataset[i][1])
-    ax.imshow(dataset[i][0])
 
 plt.tight_layout()
 plt.show()

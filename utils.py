@@ -2,7 +2,6 @@ import numpy as np
 from astropy.io import fits
 import numpy as np
 import pandas as pd
-import warnings
 import os
 import re
 
@@ -10,26 +9,22 @@ from typing import List
 
 
 
+def _permute(X, Y):
+    indices_l = np.arange(len(X))
+    np.random.shuffle(indices_l)
+
+    return X[indices_l], Y[indices_l]
+
+
 
 #! Image dims: 3 x 101 x 101
-def load_data(root, datatype, use_cached=True, permute=False):
-    if use_cached:
-        try:
-            X = np.load(os.path.join(root, f'X_{datatype}.npy'))
-            y = np.load(os.path.join(root, f'Y_{datatype}.npy'))
-            print('Cached data found!')
-            if permute:
-                indices = np.arange(len(X))
-                np.random.shuffle(indices)
-                X = X[indices]
-                y = y[indices]
-            return X, y
-        
-        except FileNotFoundError as _:
-            warnings.warn('Cached data does not exist! Loading from raw data.')
+def load_data(root, datatype):
+    """
+    Splits and saves source domain dataset OR labeled and unlabeled target domain datasets separately
+    """
 
 
-    # number: {data: ..., label: ...}
+    # number: {data: ..., label: ...} OR {data: ...}
     data = {}
 
     labels_df = pd.read_csv(os.path.join(root, f"{datatype}_test.csv"))
@@ -45,7 +40,7 @@ def load_data(root, datatype, use_cached=True, permute=False):
         for file in os.scandir(band):
             if file.is_file() and file.name.endswith(".fits"):
                 hdul = fits.getdata(file).copy()
-                hdul = _normilise_standardise(hdul)                    
+                hdul = _normilise_standardise(hdul)
 
                 index_position = re.search(pattern, file.name)
                 num = index_position.group(2)
@@ -56,16 +51,17 @@ def load_data(root, datatype, use_cached=True, permute=False):
 
 
                 if first:
-                    l = labels_df.loc[int(num), "no_source"] 
-                    data[num] = {'label': l, 'data': []}
+                    if int(num) in labels_df.index:
+                        l = labels_df.loc[int(num), "no_source"]
+                        data[num] = {'label': l, 'data': []}
+                    else:
+                        data[num] = {'data': []}
 
                 if not _is_faulty_image(hdul):
                     data[num]['data'].append(hdul)
                 
                 # elif not num in faulty_numbers:
                     # faulty_numbers.append(num)
-                        
-
 
         first = False
 
@@ -95,35 +91,39 @@ def load_data(root, datatype, use_cached=True, permute=False):
         #     data[inner_dict]['data'] = np.concatenate((img, np.mean(img, axis=0)[np.newaxis, :]), axis=0)
         
 
-    X = np.array([data[inner_dict]['data'] for inner_dict in data.keys()]).transpose((0,3,1,2))
-    y = np.array([data[inner_dict]['label'] for inner_dict in data.keys()])
+    X = np.array([data[inner_dict]['data'] for inner_dict in data.keys() if data[inner_dict].get('label') is not None])
+    y = np.array([data[inner_dict]['label'] for inner_dict in data.keys() if data[inner_dict].get('label') is not None])
+    X_unlabeled = None
 
+
+    if datatype == "easy":
+        assert len(X) == len(y)
+
+    else:
+        X_unlabeled = np.array([data[inner_dict]['data'] for inner_dict in data.keys() if data[inner_dict].get('label') is None])
+        np.save(os.path.join(root, f'X_unlabeled.npy'), X_unlabeled)
+
+
+    np.save(os.path.join(root, f'X_{datatype}.npy'), X)
+    np.save(os.path.join(root, f'Y_{datatype}.npy'), y)
+    
+        
     #* select faulty images
     # X = np.array([data[inner_dict]['data'] for inner_dict in data.keys() if inner_dict in faulty_numbers])
     # y = np.array([data[inner_dict]['label'] for inner_dict in data.keys() if inner_dict in faulty_numbers])
 
-    unique_values, counts = np.unique(y, return_counts=True)
+    #* count unique labels
+    # unique_values, counts = np.unique(y, return_counts=True)
 
-    print("Unique Values:", unique_values)
-    print("Counts:", counts)
+    # print("Unique Values:", unique_values)
+    # print("Counts:", counts)
 
 
     # print("total faulty images: ", len(faulty_numbers))
     # print(f"deleted {str(irrecoverable)} irrecoverables ")
 
+    return X, y, X_unlabeled
 
-    if permute:
-        indices = np.arange(len(X))
-        np.random.shuffle(indices)
-        X = X[indices]
-        y = y[indices]
-
-
-    np.save(os.path.join(root, f'X_{datatype}.npy'), X)
-    np.save(os.path.join(root, f'Y_{datatype}.npy'), y)
-
-
-    return X, y
 
 
 
