@@ -112,7 +112,7 @@ class Adamatch():
 
             dataset = zip(source_dataloader_weak, source_dataloader_strong, target_dataloader_weak, target_dataloader_strong)
 
-            # this is where the unsupervised learning comes in, as such, we're not interested in labels
+            #* this is where the unsupervised learning comes in, as such, we're not interested in labels
             for (data_source_weak, labels_source), (data_source_strong, _), (data_target_weak, _), (data_target_strong, _) in dataset:
                 data_source_weak = data_source_weak.to(self.device)
                 labels_source = labels_source.to(self.device)
@@ -121,108 +121,131 @@ class Adamatch():
                 data_target_weak = data_target_weak.to(self.device)
                 data_target_strong = data_target_strong.to(self.device)
 
-                # concatenate data (in case of low GPU power this could be done after classifying with the model)
+                #* concatenate data (in case of low GPU power this could be done after classifying with the model)
                 data_combined = torch.cat([data_source_weak, data_source_strong, data_target_weak, data_target_strong], 0)
                 source_combined = torch.cat([data_source_weak, data_source_strong], 0)
 
-                # get source data limit (useful for slicing later)
+                #* get source data limit (useful for slicing later)
                 source_total = source_combined.size(0)
 
-                # zero gradients
+                #* zero gradients
                 optimizer.zero_grad()
 
-                # forward pass: calls the model once for both source and target and once for source only
-                logits_combined = self.classifier(self.encoder(data_combined))
+                #* forward pass: calls the model once for both source and target and once for source only
+                logits_combined = self.classifier(self.encoder(data_combined)).squeeze(1)
                 logits_source_p = logits_combined[:source_total]
+                # print("logits_source_p: ", logits_source_p)
 
-                # from https://github.com/yizhe-ang/AdaMatch-PyTorch/blob/main/trainers/adamatch.py
+                #* from https://github.com/yizhe-ang/AdaMatch-PyTorch/blob/main/trainers/adamatch.py
                 self._disable_batchnorm_tracking(self.encoder)
                 self._disable_batchnorm_tracking(self.classifier)
-                logits_source_pp = self.classifier(self.encoder(source_combined))
+                logits_source_pp = self.classifier(self.encoder(source_combined)).squeeze(1)
+                # print("logits_source_pp: ", logits_source_pp)
                 
                 self._enable_batchnorm_tracking(self.encoder)
                 self._enable_batchnorm_tracking(self.classifier)
 
-                # perform random logit interpolation
+                #* perform random logit interpolation
                 lambd = torch.rand_like(logits_source_p).to(self.device)
                 final_logits_source = (lambd * logits_source_p) + ((1-lambd) * logits_source_pp)
-
-                # distribution allignment
+                
+                #* distribution allignment
                 ## softmax for logits of weakly augmented source images
                 logits_source_weak = final_logits_source[:data_source_weak.size(0)]
-                pseudolabels_source = F.softmax(logits_source_weak, 1)
+                pseudolabels_source = F.sigmoid(logits_source_weak)
+                # print("pseudolabels_source: ", pseudolabels_source)
 
-                ## softmax for logits of weakly augmented target images
+                #* softmax for logits of weakly augmented target images
                 logits_target = logits_combined[source_total:]
                 logits_target_weak = logits_target[:data_target_weak.size(0)]
-                pseudolabels_target = F.softmax(logits_target_weak, 1)
+                pseudolabels_target = F.sigmoid(logits_target_weak)
+                # print("pseudolabels_target: ", pseudolabels_target)
 
-                ## allign target label distribtion to source label distribution
+
+                #* allign target label distribtion to source label distribution
                 expectation_ratio = (1e-6 + torch.mean(pseudolabels_source)) / (1e-6 + torch.mean(pseudolabels_target))
-                final_pseudolabels = F.normalize((pseudolabels_target * expectation_ratio), p=2, dim=1) # L2 normalization
+                # print("expectation_ratio: ", expectation_ratio)
 
-                # perform relative confidence thresholding
-                row_wise_max, _ = torch.max(pseudolabels_source, dim=1)
-                final_sum = torch.mean(row_wise_max, 0)
+                #* L2 normalization
+                def l2_norm(x):
+                    return x / torch.sqrt(2 * x ** 2 - 2 * x + 1)
                 
-                ## define relative confidence threshold
+                # final_pseudolabels = l2_norm(pseudolabels_target * expectation_ratio)
+                final_pseudolabels = pseudolabels_target * expectation_ratio
+                # print("final_pseudolabels: ", final_pseudolabels)
+
+                #* perform relative confidence thresholding
+                final_sum = torch.mean(pseudolabels_source, 0)
+                
+                #* define relative confidence threshold
                 c_tau = tau * final_sum
+                # print("c_tau: ", c_tau)
 
-                max_values, _ = torch.max(final_pseudolabels, dim=1)
-                mask = (max_values >= c_tau).float()
 
-                # compute loss
+                mask = (final_pseudolabels >= c_tau).float()
+                print("mask: ", torch.count_nonzero(mask))
+
+                #* compute loss
                 source_loss = self._compute_source_loss(logits_source_weak, final_logits_source[data_source_weak.size(0):], labels_source)
+                print("source loss: ", source_loss)
                 
-                final_pseudolabels = torch.max(final_pseudolabels, 1)[1] # argmax
-                target_loss = self._compute_target_loss(final_pseudolabels, logits_target[data_target_weak.size(0):], mask)
+                final_pseudolabels = torch.round(final_pseudolabels) # argmax
 
-                ## compute target loss weight (mu)
+                target_loss = self._compute_target_loss(final_pseudolabels, logits_target[data_target_weak.size(0):], mask)
+                # print("target loss: ", target_loss)
+
+                #* compute target loss weight (mu)
                 pi = torch.tensor(np.pi, dtype=torch.float).to(self.device)
                 step = torch.tensor(current_step, dtype=torch.float).to(self.device)
                 mu = 0.5 - torch.cos(torch.minimum(pi, (2*pi*step) / total_steps)) / 2
 
-                ## get total loss
+                #* get total loss
                 loss = source_loss + (mu * target_loss)
                 current_step += 1
 
-                # backpropagate and update weights
+                #* backpropagate and update weights
                 loss.backward()
                 optimizer.step()
 
-                # metrics
+                # print("encoder.parameters: ", loss.grad)
+                # print("classifier.parameters: ", self.classifier.parameters().grad)
+                
+
+                #* metrics
                 running_loss += loss.item()
 
-            # get losses
+            #* get losses
             epoch_loss = running_loss / iters
             self.history['epoch_loss'].append(epoch_loss)
 
-            # self.evaluate on testing data (target domain)
+            #* evaluate on testing data (target domain)
             epoch_accuracy_source = self.evaluate(source_dataloader_weak)
-            epoch_accuracy_target = self.evaluate(target_dataloader_weak)
-            test_epoch_accuracy = self.evaluate(target_dataloader_test)
+            #! REPLACE WITH LABELED TARGET DATA (TRAIN/TEST SPLIT??)
+            # epoch_accuracy_target = self.evaluate(target_dataloader_weak)
+            # test_epoch_accuracy = self.evaluate(target_dataloader_test)
             
             self.history['accuracy_source'].append(epoch_accuracy_source)
-            self.history['accuracy_target'].append(epoch_accuracy_target)
+            # self.history['accuracy_target'].append(epoch_accuracy_target)
 
-            # save checkpoint
-            if test_epoch_accuracy > best_acc:
+            #* save checkpoint
+            if epoch_accuracy_source > best_acc:
                 torch.save({'encoder_weights': self.encoder.state_dict(),
                             'classifier_weights': self.classifier.state_dict()
                             }, save_path)
-                best_acc = test_epoch_accuracy
+                best_acc = epoch_accuracy_source
                 bad_epochs = 0
                 
             else:
                 bad_epochs += 1
                 
-            print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}; accuracy target: {:.6f}; val accuracy: {:.6f};'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source, epoch_accuracy_target, test_epoch_accuracy))
+            # print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}; accuracy target: {:.6f}; val accuracy: {:.6f};'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source, epoch_accuracy_target, test_epoch_accuracy))
+            print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source))
             
             if bad_epochs >= patience:
                 print(f"reached {bad_epochs} bad epochs, stopping training with best val accuracy of {best_acc}!")
                 break
 
-            # scheduler step
+            #* scheduler step
             if step_scheduler:
                 scheduler.step()
 
@@ -265,13 +288,15 @@ class Adamatch():
                 labels = labels.to(self.device)
 
                 # predict
-                outputs = F.softmax(self.classifier(self.encoder(data)), dim=1)
+                # print(self.classifier(self.encoder(data)))
+                outputs = self.classifier(self.encoder(data)).cpu().squeeze(1)
 
                 # numpify
                 labels_numpy = labels.detach().cpu().numpy()
-                outputs_numpy = outputs.detach().cpu().numpy() # probs (AUROC)
+                outputs_numpy = outputs.detach().numpy() # probs (AUROC)
+
+                preds = F.sigmoid(outputs).numpy() # accuracy
                 
-                preds = np.argmax(outputs_numpy, axis=1) # accuracy
 
                 # append
                 labels_list.append(labels_numpy)
@@ -284,6 +309,8 @@ class Adamatch():
 
         # metrics
         #auc = sklearn.metrics.roc_auc_score(labels_list, outputs_list, multi_class='ovr')
+        labels_list = np.where(labels_list > 0.5, 1, 0)
+        preds_list = np.where(preds_list > 0.5, 1, 0)
         accuracy = sklearn.metrics.accuracy_score(labels_list, preds_list)
 
         if return_lists_roc:
@@ -418,7 +445,8 @@ class Adamatch():
         """
         Receives logits as input (dense layer outputs with no activation function)
         """
-        loss_function = nn.CrossEntropyLoss() # default: `reduction="mean"`
+        loss_function = nn.BCEWithLogitsLoss() # default: `reduction="mean"`
+
         weak_loss = loss_function(logits_weak, labels)
         strong_loss = loss_function(logits_strong, labels)
 
@@ -431,7 +459,7 @@ class Adamatch():
         Receives logits as input (dense layer outputs with no activation function).
         `pseudolabels` are treated as ground truth (standard SSL practice).
         """
-        loss_function = nn.CrossEntropyLoss(reduction="none")
+        loss_function = nn.BCEWithLogitsLoss(reduction="none")
         pseudolabels = pseudolabels.detach() # remove from backpropagation
 
         loss = loss_function(logits_strong, pseudolabels)

@@ -97,6 +97,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
     
     
     USE_CASHED = True
+    PERMUTE = True
 
 
     #* source datasets
@@ -106,7 +107,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 datatype="easy",
                                 isLabeled=True,
                                 use_cached = USE_CASHED,
-                                permute = False
+                                permute = PERMUTE
                                 )
     
 
@@ -116,28 +117,28 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 datatype="easy",
                                 isLabeled=True,
                                 use_cached = USE_CASHED,
-                                permute = False
+                                permute = PERMUTE
                                 )
 
 
     #* target datasets
-    target_dataset_train_weak_labeled = _LensData(
-                                transform=train_transform_weak,
-                                root=root,
-                                datatype="hard",
-                                isLabeled=True,
-                                use_cached = USE_CASHED,
-                                permute = False
-                                )
+    # target_dataset_train_weak_labeled = _LensData(
+    #                             transform=train_transform_weak,
+    #                             root=root,
+    #                             datatype="hard",
+    #                             isLabeled=True,
+    #                             use_cached = USE_CASHED,
+    #                             permute = PERMUTE
+    #                             )
     
-    target_dataset_train_strong_labeled = _LensData(
-                                transform=train_transform_strong,
-                                root=root,
-                                datatype="hard",
-                                isLabeled=True,
-                                use_cached = USE_CASHED,
-                                permute = False
-                                )
+    # target_dataset_train_strong_labeled = _LensData(
+    #                             transform=train_transform_strong,
+    #                             root=root,
+    #                             datatype="hard",
+    #                             isLabeled=True,
+    #                             use_cached = USE_CASHED,
+    #                             permute = PERMUTE
+    #                             )
     
 
     target_dataset_train_weak_unlabeled = _LensData(
@@ -146,7 +147,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 datatype="hard",
                                 isLabeled=False,
                                 use_cached = USE_CASHED,
-                                permute = False
+                                permute = PERMUTE
                                 )
     
 
@@ -156,7 +157,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 datatype="hard",
                                 isLabeled=False,
                                 use_cached = USE_CASHED,
-                                permute = False
+                                permute = PERMUTE
                                 )
 
 
@@ -167,13 +168,13 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 isLabeled=False,
                                 isTest=True,
                                 use_cached = USE_CASHED,
-                                permute = False
+                                permute = PERMUTE
                                 )
     
 
     #* concatenate source and labeled target datasets
-    source_dataset_train_weak = ConcatDataset([source_dataset_train_weak, target_dataset_train_weak_labeled])
-    source_dataset_train_strong = ConcatDataset([source_dataset_train_strong, target_dataset_train_strong_labeled])
+    # source_dataset_train_weak = ConcatDataset([source_dataset_train_weak, target_dataset_train_weak_labeled])
+    # source_dataset_train_strong = ConcatDataset([source_dataset_train_strong, target_dataset_train_strong_labeled])
 
 
     #* all dataloaders

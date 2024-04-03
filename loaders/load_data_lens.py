@@ -17,6 +17,8 @@ class _LensData(Dataset):
     def __init__(self, transform, root="./data", datatype="easy", isLabeled=True, isTest=False, use_cached=True, permute=False) -> None:
         self.transform = transform
 
+        # SAMPLES = 120
+
         if datatype == "easy":
             isLabeled = True
 
@@ -24,10 +26,10 @@ class _LensData(Dataset):
             try:
                 if isLabeled:
                     self.X = np.load(os.path.join(root, f'X_{datatype}.npy'))
-                    self.y = np.load(os.path.join(root, f'Y_{datatype}.npy'))
+                    self.y = np.load(os.path.join(root, f'Y_{datatype}.npy')).astype(np.float32)
                 else:
                     self.X = np.load(os.path.join(root, f'X_unlabeled.npy'))
-                    self.y = np.zeros((self.X.shape[0]), dtype=np.int64)
+                    self.y = np.zeros((self.X.shape[0]), dtype=np.float32)
 
                     if not isTest:
                         self.X, _ = array_split(self.X)
@@ -38,13 +40,15 @@ class _LensData(Dataset):
                 if permute:
                     self.X, self.y = _permute(self.X, self.y)
 
+
                 #! FOR TESTING ONLY
-                self.X, self.y = self.X[:100], self.y[:100]
+                # self.X, self.y = self.X[:SAMPLES], self.y[:SAMPLES]
 
                 self.X = self.X.transpose((0,2,3,1))
                 print('Cached data found!')
-                # print("X shape cached: ", self.X.shape)
-                print("y type cached: ", self.y.dtype)
+                # print("X cached: ", np.max(self.X, axis=(1,2,3)))
+                # print("X cached: ", np.min(self.X, axis=(1,2,3)))
+                # print("y cached: ", self.y)
 
                 return
                 
@@ -71,7 +75,7 @@ class _LensData(Dataset):
             self.X, self.y = _permute(self.X, self.y)
 
         #! FOR TESTING ONLY
-        self.X, self.y = self.X[:100], self.y[:100]
+        # self.X, self.y = self.X[:SAMPLES], self.y[:SAMPLES]
 
 
         self.X = self.X.transpose((0,2,3,1))

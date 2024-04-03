@@ -13,7 +13,7 @@ from adamatch.adamatch import Adamatch
 
 if __name__ == '__main__':
     #* get source and target data
-    data = get_dataloaders("./data", batch_size_source=5, workers=2)
+    data = get_dataloaders("./data", batch_size_source=32, workers=2)
 
     source_dataloader_train_weak, source_dataloader_train_strong = data[0]
     target_dataloader_train_weak, target_dataloader_train_strong, target_dataloader_test = data[1]
@@ -26,15 +26,14 @@ if __name__ == '__main__':
 
 
     #* instantiate the network
-    n_classes = 2
     encoder = Encoder()
-    classifier = Classifier(n_classes=n_classes)
+    classifier = Classifier(n_classes=1)
 
 
     #* instantiate AdaMatch algorithm and setup hyperparameters
     adamatch = Adamatch(encoder, classifier)
     hparams = adamatch_hyperparams()
-    epochs = 2
+    epochs = 20
     save_path = "./adamatch_checkpoint.pt"
 
     #* train the model

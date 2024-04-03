@@ -9,7 +9,9 @@ from typing import List
 
 
 
-def _permute(X, Y):
+def _permute(X, Y, seed=0):
+    np.random.seed(seed)
+
     indices_l = np.arange(len(X))
     np.random.shuffle(indices_l)
 

@@ -26,7 +26,7 @@ class Encoder(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, features_size=FEATURES_SIZE, n_classes=2):
+    def __init__(self, features_size=FEATURES_SIZE, n_classes=1):
         """
         Neural network that receives an array of size `features_size` and classifies it into `n_classes` classes.
 

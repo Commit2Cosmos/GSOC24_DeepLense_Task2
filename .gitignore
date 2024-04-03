@@ -1,2 +1,4 @@
 __pycache__
 data/*
+to_compress
+to_compress/*

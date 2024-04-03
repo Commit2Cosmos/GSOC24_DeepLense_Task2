@@ -1,4 +1,4 @@
-def adamatch_hyperparams(lr=3e-3, tau=0.9, wd=5e-4, scheduler=True):
+def adamatch_hyperparams(lr=1e-4, tau=1, wd=1e-6, scheduler=True):
     """
     Return a dictionary of hyperparameters for the AdaMatch algorithm.
 

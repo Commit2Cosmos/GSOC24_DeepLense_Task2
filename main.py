@@ -35,37 +35,66 @@ import matplotlib.pyplot as plt
 
 from adamatch.data import Wiener, MinMaxNormalizeImage
 from torchvision import transforms
+import random
+import torch
+
+train_transform_strong = transforms.Compose([transforms.ToTensor(),
+                                                #  transforms.Resize(101),
+                                                 transforms.RandomAutocontrast(),
+                                                 #transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 1.)),
+                                                 #transforms.RandomEqualize(), # only on PIL images
+                                                 transforms.RandomInvert(),
+                                                 #transforms.RandomPosterize(random.randint(1, 8)), # only on PIL images
+                                                 transforms.RandomAdjustSharpness(random.uniform(0, 1)),
+                                                 transforms.RandomSolarize(random.uniform(0, 1)),
+                                                #  transforms.RandomAffine(45, translate=(0.3, 0.3), scale=(0.8, 1.2), shear=(-0.3, 0.3, -0.3, 0.3)),
+                                                 transforms.RandomErasing(),
+                                                 MinMaxNormalizeImage()
+                                                 ])
 
 test_transform = transforms.Compose([transforms.ToTensor(),
-                                         transforms.Resize(101),
+                                        #  transforms.Resize(101),
+                                         Wiener(),
                                          MinMaxNormalizeImage(),
                                          ])
 
 
-source_dataset_train_weak = _LensData( 
+source_dataset_strong = _LensData( 
+                                transform=train_transform_strong,
+                                root="./data",
+                                datatype="easy",
+                                isLabeled=True,
+                                use_cached = True,
+                                permute = True
+                                )
+
+source_dataset_og = _LensData( 
                                 transform=test_transform,
                                 root="./data",
                                 datatype="easy",
                                 isLabeled=True,
                                 use_cached = True,
-                                permute = False
+                                permute = True
                                 )
 
 
 
 #! PLOT IMAGES
-fig, axes = plt.subplots(2, 4, sharex='all', sharey='all', figsize=(15,12))
+fig, axes = plt.subplots(2, 6, sharex='all', sharey='all', figsize=(15,12))
 plt.axis('off')
 
 axes = axes.flatten()
 
 for i in range(0, int(len(axes)/2), 1):
-    axes[i].set_title(source_dataset_train_weak[i][1])
-    axes[i].imshow(source_dataset_train_weak[i][0].transpose(0, 2))
-    im2 = Wiener()(source_dataset_train_weak[i][0]).transpose(0, 2)
-    axes[i+4].set_title(source_dataset_train_weak[i][1])
-    axes[i+4].imshow(im2)
+    # print(torch.max(source_dataset_og[i][0].transpose(0, 2)))
+    # print(torch.min(source_dataset_og[i][0].transpose(0, 2)))
+    axes[i].set_title(source_dataset_og[i][1])
+    axes[i].imshow(source_dataset_og[i][0].transpose(0, 2))
+    # print(torch.max(source_dataset_strong[i][0].transpose(0, 2)))
+    # print(torch.min(source_dataset_strong[i][0].transpose(0, 2)))
+    axes[i+6].set_title(source_dataset_strong[i][1])
+    axes[i+6].imshow(source_dataset_strong[i][0].transpose(0, 2))
 
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
