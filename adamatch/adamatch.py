@@ -170,12 +170,13 @@ class Adamatch():
                 def l2_norm(x):
                     return x / torch.sqrt(2 * x ** 2 - 2 * x + 1)
                 
-                # final_pseudolabels = l2_norm(pseudolabels_target * expectation_ratio)
-                final_pseudolabels = pseudolabels_target * expectation_ratio
+                final_pseudolabels = l2_norm(pseudolabels_target * expectation_ratio)
+                # final_pseudolabels = pseudolabels_target * expectation_ratio
                 # print("final_pseudolabels: ", final_pseudolabels)
 
                 #* perform relative confidence thresholding
-                final_sum = torch.mean(pseudolabels_source, 0)
+                max_binary = torch.where(pseudolabels_source < 0.5, 1-pseudolabels_source, pseudolabels_source)
+                final_sum = torch.mean(max_binary, 0)
                 
                 #* define relative confidence threshold
                 c_tau = tau * final_sum
@@ -183,11 +184,11 @@ class Adamatch():
 
 
                 mask = (final_pseudolabels >= c_tau).float()
-                print("mask: ", torch.count_nonzero(mask))
+                print("mask: ", torch.count_nonzero(mask).item())
 
                 #* compute loss
                 source_loss = self._compute_source_loss(logits_source_weak, final_logits_source[data_source_weak.size(0):], labels_source)
-                print("source loss: ", source_loss)
+                print("source loss: ", source_loss.item())
                 
                 final_pseudolabels = torch.round(final_pseudolabels) # argmax
 
