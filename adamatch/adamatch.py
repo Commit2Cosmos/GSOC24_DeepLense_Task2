@@ -3,9 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 import torch.optim as optim
-import matplotlib.pyplot as plt
 import sklearn.metrics
-import seaborn as sns
 
 class Adamatch():
     """
@@ -13,7 +11,7 @@ class Adamatch():
     Authors: David Berthelot, Rebecca Roelofs, Kihyuk Sohn, Nicholas Carlini, Alex Kurakin
     """
 
-    def __init__(self, encoder, classifier):
+    def __init__(self, encoder, classifier, pretrained = False):
         """
         NOTE: the actual AdaMatch paper doesn't separate between encoder and classifier,
         but I find it more practical for the purposes of setting up the networks.
@@ -30,6 +28,11 @@ class Adamatch():
         self.device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
         self.encoder = encoder.to(self.device)
         self.classifier = classifier.to(self.device)
+        
+        if pretrained:
+            weights = torch.load("./results/adamatch_checkpoint.pt", map_location=torch.device('cpu'))
+            self.encoder.load_state_dict(weights["encoder_weights"])
+            self.classifier.load_state_dict(weights["classifier_weights"])
 
     def train(self, source_dataloader_weak, source_dataloader_strong,
               target_dataloader_weak, target_dataloader_strong, target_dataloader_test,
@@ -188,9 +191,9 @@ class Adamatch():
 
                 #* compute loss
                 source_loss = self._compute_source_loss(logits_source_weak, final_logits_source[data_source_weak.size(0):], labels_source)
-                print("source loss: ", source_loss.item())
+                # print("source loss: ", source_loss.item())
                 
-                final_pseudolabels = torch.round(final_pseudolabels) # argmax
+                final_pseudolabels = torch.round(final_pseudolabels)
 
                 target_loss = self._compute_target_loss(final_pseudolabels, logits_target[data_target_weak.size(0):], mask)
                 # print("target loss: ", target_loss)
@@ -221,29 +224,26 @@ class Adamatch():
 
             #* evaluate on testing data (target domain)
             epoch_accuracy_source = self.evaluate(source_dataloader_weak)
-            #! REPLACE WITH LABELED TARGET DATA (TRAIN/TEST SPLIT??)
-            # epoch_accuracy_target = self.evaluate(target_dataloader_weak)
-            # test_epoch_accuracy = self.evaluate(target_dataloader_test)
+            test_epoch_accuracy = self.evaluate(target_dataloader_test)
             
             self.history['accuracy_source'].append(epoch_accuracy_source)
-            # self.history['accuracy_target'].append(epoch_accuracy_target)
 
             #* save checkpoint
-            if epoch_accuracy_source > best_acc:
+            if test_epoch_accuracy > best_acc:
                 torch.save({'encoder_weights': self.encoder.state_dict(),
                             'classifier_weights': self.classifier.state_dict()
                             }, save_path)
-                best_acc = epoch_accuracy_source
+                best_acc = test_epoch_accuracy
                 bad_epochs = 0
                 
             else:
                 bad_epochs += 1
                 
-            # print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}; accuracy target: {:.6f}; val accuracy: {:.6f};'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source, epoch_accuracy_target, test_epoch_accuracy))
-            print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source))
+            print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}; val accuracy: {:.6f};'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source, test_epoch_accuracy))
+            # print('[Epoch {}/{}] loss: {:.6f}; accuracy source: {:.6f}'.format(epoch+1, epochs, epoch_loss, epoch_accuracy_source))
             
             if bad_epochs >= patience:
-                print(f"reached {bad_epochs} bad epochs, stopping training with best val accuracy of {best_acc}!")
+                print(f"Reached {bad_epochs} bad epochs, stopping training with best val accuracy of {best_acc}!")
                 break
 
             #* scheduler step
@@ -254,7 +254,7 @@ class Adamatch():
         self.encoder.load_state_dict(best['encoder_weights'])
         self.classifier.load_state_dict(best['classifier_weights'])
         
-        return self.encoder, self.classifier
+        return self.encoder, self.classifier, self.history
 
     def evaluate(self, dataloader, return_lists_roc=False):
         """
@@ -319,111 +319,6 @@ class Adamatch():
             
         return accuracy
 
-    def plot_metrics(self):
-        """
-        Plots the training metrics (only usable after calling .train()).
-        """
-
-        # plot metrics for losses n stuff
-        fig, axs = plt.subplots(1, 3, figsize=(18,5), dpi=200)
-
-        epochs = len(self.history['epoch_loss'])
-
-        axs[0].plot(range(1, epochs+1), self.history['epoch_loss'])
-        axs[0].set_xlabel('Epochs')
-        axs[0].set_ylabel('Loss')
-        axs[0].set_title('Entropy loss')
-
-        axs[1].plot(range(1, epochs+1), self.history['accuracy_source'])
-        axs[1].set_xlabel('Epochs')
-        axs[1].set_ylabel('Accuracy')
-        axs[1].set_title('Accuracy on weakly augmented source')
-
-        axs[2].plot(range(1, epochs+1), self.history['accuracy_target'])
-        axs[2].set_xlabel('Epochs')
-        axs[2].set_ylabel('Accuracy')
-        axs[2].set_title('Accuracy on weakly augmented target')      
-            
-        plt.show()
-
-    def plot_cm_roc(self, dataloader, n_classes=2):
-        """
-        Plots the confusion matrix and ROC curves of the model on `dataloader`.
-
-        Arguments:
-        ----------
-        dataloader: PyTorch DataLoader
-            DataLoader with test data.
-
-        n_classes: int
-            Number of classes.
-        """
-
-        cmap = sns.diverging_palette(220, 20, as_cmap=True)
-
-        self.encoder.eval()
-        self.classifier.eval()
-
-        accuracy, labels_list, outputs_list, preds_list = self.evaluate(dataloader, return_lists_roc=True)
-
-        # plot confusion matrix
-        cm = sklearn.metrics.confusion_matrix(labels_list, preds_list)
-        group_counts = ['{0:0.0f}'.format(value) for value in cm.flatten()]
-        group_percentages = ['({0:.2%})'.format(value) for value in cm.flatten()/np.sum(cm)]
-        labels = [f'{v1}\n{v2}' for v1, v2 in zip(group_counts, group_percentages)]
-        labels = np.asarray(labels).reshape(n_classes,n_classes)
-        #tn, fp, fn, tp = cm.ravel()
-
-        plt.figure(figsize=(10,10), dpi=200)
-        sns.heatmap(cm, annot=labels, cmap=cmap, fmt="")
-        plt.title("Confusion matrix")
-        plt.ylabel("Actual label")
-        plt.xlabel("Predicted label")
-        plt.show()
-
-        # plot roc
-        ## one hot encode data
-        onehot = np.zeros((labels_list.size, labels_list.max()+1))
-        onehot[np.arange(labels_list.size),labels_list] = 1
-        onehot = onehot.astype('int')
-
-        fpr = dict()
-        tpr = dict()
-        roc_auc = dict()
-
-        ## get roc curve and auroc for each class
-        for i in range(n_classes):
-            fpr[i], tpr[i], _ = sklearn.metrics.roc_curve(onehot[:, i], outputs_list[:, i])
-            roc_auc[i] = sklearn.metrics.auc(fpr[i], tpr[i])
-
-        ## get macro average auroc
-        all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
-        mean_tpr = np.zeros_like(all_fpr)
-        for i in range(n_classes):
-            mean_tpr += np.interp(all_fpr, fpr[i], tpr[i])
-
-        mean_tpr /= n_classes
-
-        fpr["macro"] = all_fpr
-        tpr["macro"] = mean_tpr
-        roc_auc["macro"] = sklearn.metrics.auc(fpr["macro"], tpr["macro"])
-
-        plt.figure(figsize=(9,9), dpi=200)
-
-        plt.plot([0, 1], [0, 1], color='black', linestyle='--')
-
-        for i in range(n_classes):
-            plt.plot(fpr[i], tpr[i], label=f"AUC class {i} = {roc_auc[i]:.4f}")
-
-        plt.plot(fpr["macro"], tpr["macro"], label=f"macro-average AUC = {roc_auc['macro']:.4f}", color='deeppink', linewidth=2)
-            
-        plt.title('Receiver Operating Characteristic (ROC)')
-        plt.xlabel('False Positives')
-        plt.ylabel('True Positives')
-        ax = plt.gca()
-        ax.set_aspect('equal')
-        plt.legend(loc='lower right')
-        plt.show()
 
     @staticmethod
     def _disable_batchnorm_tracking(model):

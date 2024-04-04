@@ -4,6 +4,8 @@ parent_directory = os.getcwd()
 sys.path.insert(0, parent_directory)
 # print(sys.path)
 
+import json
+
 
 from adamatch.data import get_dataloaders
 from adamatch.network import Encoder, Classifier
@@ -13,7 +15,7 @@ from adamatch.adamatch import Adamatch
 
 if __name__ == '__main__':
     #* get source and target data
-    data = get_dataloaders("./data", batch_size_source=32, workers=2)
+    data = get_dataloaders("./data", batch_size_source=10, workers=2)
 
     source_dataloader_train_weak, source_dataloader_train_strong = data[0]
     target_dataloader_train_weak, target_dataloader_train_strong, target_dataloader_test = data[1]
@@ -34,18 +36,14 @@ if __name__ == '__main__':
     adamatch = Adamatch(encoder, classifier)
     hparams = adamatch_hyperparams()
     epochs = 20
-    save_path = "./adamatch_checkpoint.pt"
+    save_path = "./results/adamatch_checkpoint.pt"
 
     #* train the model
-    adamatch.train(source_dataloader_train_weak, source_dataloader_train_strong,
-                target_dataloader_train_weak, target_dataloader_train_strong, target_dataloader_test,
-                epochs, hparams, save_path)
+    _, _, history = adamatch.train(
+        source_dataloader_train_weak, source_dataloader_train_strong,
+        target_dataloader_train_weak, target_dataloader_train_strong, target_dataloader_test,
+        epochs, hparams, save_path
+    )
 
-    #* evaluate the model
-    # adamatch.plot_metrics()
-
-    #* returns accuracy on the test set
-    # print(f"accuracy on test set = {adamatch.evaluate(target_dataloader_test)}")
-
-    #* returns a confusion matrix plot and a ROC curve plot (that also shows the AUROC)
-    # adamatch.plot_cm_roc(target_dataloader_test)
+    with open("./results/history.json", "w") as file:
+        json.dump(history, file)

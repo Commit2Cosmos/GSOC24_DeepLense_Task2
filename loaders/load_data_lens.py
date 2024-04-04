@@ -3,17 +3,10 @@ import numpy as np
 import os
 import warnings
 from utils import load_data, _permute
+from sklearn.model_selection import train_test_split
 
 
-
-def array_split(arr: np.array, train_size: float = 0.8):
-    split_index = int(len(arr) * train_size)
-    arr1, arr2 = np.array_split(arr, [split_index])
-    
-    return arr1, arr2
-
-
-class _LensData(Dataset):
+class LensData(Dataset):
     def __init__(self, transform, root="./data", datatype="easy", isLabeled=True, isTest=False, use_cached=True, permute=False) -> None:
         self.transform = transform
 
@@ -21,20 +14,23 @@ class _LensData(Dataset):
 
         if datatype == "easy":
             isLabeled = True
+            isTest = False
 
         if use_cached:
             try:
                 if isLabeled:
                     self.X = np.load(os.path.join(root, f'X_{datatype}.npy'))
                     self.y = np.load(os.path.join(root, f'Y_{datatype}.npy')).astype(np.float32)
+
+                    if datatype == "hard":
+                        if not isTest:
+                            self.X_, _, self.y_, _ = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
+                        else:
+                            _, self.X, _, self.y = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
+
                 else:
                     self.X = np.load(os.path.join(root, f'X_unlabeled.npy'))
                     self.y = np.zeros((self.X.shape[0]), dtype=np.float32)
-
-                    if not isTest:
-                        self.X, _ = array_split(self.X)
-                    else:
-                        _, self.X = array_split(self.X)
 
 
                 if permute:
@@ -46,9 +42,6 @@ class _LensData(Dataset):
 
                 self.X = self.X.transpose((0,2,3,1))
                 print('Cached data found!')
-                # print("X cached: ", np.max(self.X, axis=(1,2,3)))
-                # print("X cached: ", np.min(self.X, axis=(1,2,3)))
-                # print("y cached: ", self.y)
 
                 return
                 
@@ -57,18 +50,21 @@ class _LensData(Dataset):
                 warnings.warn('Cached data does not exist! Loading from raw data.')
 
 
+        X, y, X_unlabeled = load_data(root, datatype)
+        
         if isLabeled:
-            self.X, self.y, _ = load_data(root, datatype)
+            self.X, self.y = X, y
+
+            #* train/test split
+            if not isTest and datatype == "hard":
+                self.X_test, _, self.y_test, _ = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
+            else:
+                _, self.X_test, _, self.y_test = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
 
         else:
-            _, _, self.X = load_data(root, datatype)
+            self.X = X_unlabeled
             self.y = np.zeros((self.X.shape[0]), dtype=np.int64)
             
-            #* train/test split
-            if not isTest:
-                self.X, _ = array_split(self.X)
-            else:
-                _, self.X = array_split(self.X)
 
 
         if permute:

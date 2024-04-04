@@ -1,11 +1,16 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+from adamatch.evaluate import plot_cm_roc
 
-torch.manual_seed(12)
+np.random.seed(42)
 
-probs = torch.rand(10,)
-print(probs)
+size = 30
 
-probs = torch.where(probs < 0.5, 1-probs, probs)
-print(probs)
+labels_list = np.random.randint(2, size=size)
+outputs_list = np.random.rand(size)
+preds_list = np.random.randint(2, size=size)
+
+eval_output = [0.9, labels_list, outputs_list, preds_list]
+
+plot_cm_roc(eval_output)

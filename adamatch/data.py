@@ -3,7 +3,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, ConcatDataset
 import random
 from scipy.signal import correlate
-from loaders.load_data_lens import _LensData
+from loaders.load_data_lens import LensData
 import numpy as np
 
 
@@ -87,7 +87,7 @@ def _get_transforms():
 
 
 
-def get_dataloaders(root="./data", batch_size_source=32, workers=2):
+def get_dataloaders(root="./data", batch_size_source=32, workers=2, train=True):
 
     train_transform_weak, train_transform_strong, test_transform = _get_transforms()
 
@@ -101,7 +101,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
 
 
     #* source datasets
-    source_dataset_train_weak = _LensData( 
+    source_dataset_train_weak = LensData( 
                                 transform=train_transform_weak,
                                 root=root,
                                 datatype="easy",
@@ -111,7 +111,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 )
     
 
-    source_dataset_train_strong = _LensData(
+    source_dataset_train_strong = LensData(
                                 transform=train_transform_strong,
                                 root=root,
                                 datatype="easy",
@@ -122,26 +122,26 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
 
 
     #* target datasets
-    # target_dataset_train_weak_labeled = _LensData(
-    #                             transform=train_transform_weak,
-    #                             root=root,
-    #                             datatype="hard",
-    #                             isLabeled=True,
-    #                             use_cached = USE_CASHED,
-    #                             permute = PERMUTE
-    #                             )
+    target_dataset_train_weak_labeled = LensData(
+                                transform=train_transform_weak,
+                                root=root,
+                                datatype="hard",
+                                isLabeled=True,
+                                use_cached = USE_CASHED,
+                                permute = PERMUTE
+                                )
     
-    # target_dataset_train_strong_labeled = _LensData(
-    #                             transform=train_transform_strong,
-    #                             root=root,
-    #                             datatype="hard",
-    #                             isLabeled=True,
-    #                             use_cached = USE_CASHED,
-    #                             permute = PERMUTE
-    #                             )
+    target_dataset_train_strong_labeled = LensData(
+                                transform=train_transform_strong,
+                                root=root,
+                                datatype="hard",
+                                isLabeled=True,
+                                use_cached = USE_CASHED,
+                                permute = PERMUTE
+                                )
     
 
-    target_dataset_train_weak_unlabeled = _LensData(
+    target_dataset_train_weak_unlabeled = LensData(
                                 transform=train_transform_weak,
                                 root=root,
                                 datatype="hard",
@@ -151,7 +151,7 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 )
     
 
-    target_dataset_train_strong_unlabeled = _LensData(
+    target_dataset_train_strong_unlabeled = LensData(
                                 transform=train_transform_strong,
                                 root=root,
                                 datatype="hard",
@@ -161,11 +161,11 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
                                 )
 
 
-    target_dataset_test = _LensData(
+    target_dataset_test = LensData(
                                 transform=test_transform,
                                 root=root,
                                 datatype="hard",
-                                isLabeled=False,
+                                isLabeled=True,
                                 isTest=True,
                                 use_cached = USE_CASHED,
                                 permute = PERMUTE
@@ -173,17 +173,29 @@ def get_dataloaders(root="./data", batch_size_source=32, workers=2):
     
 
     #* concatenate source and labeled target datasets
-    # source_dataset_train_weak = ConcatDataset([source_dataset_train_weak, target_dataset_train_weak_labeled])
-    # source_dataset_train_strong = ConcatDataset([source_dataset_train_strong, target_dataset_train_strong_labeled])
+    if train:
+        # print(len(source_dataset_train_weak))
+        # print(len(target_dataset_train_weak_labeled))
+        # print(len(target_dataset_train_weak_unlabeled))
+        # print(len(target_dataset_test))
 
 
-    #* all dataloaders
-    source_dataloader_train_weak = DataLoader(source_dataset_train_weak, shuffle=False, batch_size=BATCH_SIZE_source, num_workers=workers)
-    source_dataloader_train_strong = DataLoader(source_dataset_train_strong, shuffle=False, batch_size=BATCH_SIZE_source, num_workers=workers)
+        source_dataset_train_weak = ConcatDataset([source_dataset_train_weak, target_dataset_train_weak_labeled])
+        source_dataset_train_strong = ConcatDataset([source_dataset_train_strong, target_dataset_train_strong_labeled])
 
-    target_dataloader_train_weak = DataLoader(target_dataset_train_weak_unlabeled, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers)
-    target_dataloader_train_strong = DataLoader(target_dataset_train_strong_unlabeled, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers)
+        #* all dataloaders
+        source_dataloader_train_weak = DataLoader(source_dataset_train_weak, shuffle=False, batch_size=BATCH_SIZE_source, num_workers=workers, drop_last=True)
+        source_dataloader_train_strong = DataLoader(source_dataset_train_strong, shuffle=False, batch_size=BATCH_SIZE_source, num_workers=workers, drop_last=True)
 
-    target_dataloader_test = DataLoader(target_dataset_test, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers)
+        target_dataloader_train_weak = DataLoader(target_dataset_train_weak_unlabeled, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers, drop_last=True)
+        target_dataloader_train_strong = DataLoader(target_dataset_train_strong_unlabeled, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers, drop_last=True)
 
-    return (source_dataloader_train_weak, source_dataloader_train_strong), (target_dataloader_train_weak, target_dataloader_train_strong, target_dataloader_test)
+        target_dataloader_test = DataLoader(target_dataset_test, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers, drop_last=True)
+
+        return (source_dataloader_train_weak, source_dataloader_train_strong), (target_dataloader_train_weak, target_dataloader_train_strong, target_dataloader_test)
+    
+    else:
+        source_dataloader_train_weak = DataLoader(source_dataset_train_weak, shuffle=False, batch_size=BATCH_SIZE_source, num_workers=workers)
+        target_dataloader_train_weak = DataLoader(target_dataset_train_weak_labeled, shuffle=False, batch_size=BATCH_SIZE_target, num_workers=workers)
+
+        return source_dataloader_train_weak, target_dataloader_train_weak

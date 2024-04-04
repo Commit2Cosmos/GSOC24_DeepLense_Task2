@@ -1,5 +1,5 @@
 # from utils import load_data, apply_to_channels
-from loaders.load_data_lens import _LensData
+from loaders.load_data_lens import LensData
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -59,7 +59,7 @@ test_transform = transforms.Compose([transforms.ToTensor(),
                                          ])
 
 
-source_dataset_strong = _LensData( 
+source_dataset_strong = LensData( 
                                 transform=train_transform_strong,
                                 root="./data",
                                 datatype="easy",
@@ -68,7 +68,7 @@ source_dataset_strong = _LensData(
                                 permute = True
                                 )
 
-source_dataset_og = _LensData( 
+source_dataset_og = LensData( 
                                 transform=test_transform,
                                 root="./data",
                                 datatype="easy",
