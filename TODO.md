@@ -1,3 +1,9 @@
+SOURCES:
+
+- https://arxiv.org/abs/2106.04732
+
+
+TODO:
 
 - How to remove noise -> wiener
 - What to do with patches due to faulty detectors -> remove
